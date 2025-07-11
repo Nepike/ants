@@ -12,9 +12,7 @@ from matplotlib.patches import RegularPolygon, Circle, Patch
 import numpy as np
 import datetime
 from matplotlib.offsetbox import AnchoredText
-from matplotlib.font_manager import FontProperties
-
-import config
+import config  # Файл config.py с токеном
 
 # Конфигурация
 BASE_URL = 'https://games-test.datsteam.dev/api'
@@ -34,6 +32,13 @@ ANT_COLORS = {
 	0: '#4CAF50',  # Рабочий
 	1: '#2196F3',  # Солдат
 	2: '#9C27B0',  # Разведчик
+}
+
+# Цвета для вражеских муравьев
+ENEMY_COLORS = {
+	0: '#FF5252',  # Рабочий
+	1: '#FF4081',  # Солдат
+	2: '#7C4DFF',  # Разведчик
 }
 
 # Цвета для ресурсов
@@ -70,8 +75,10 @@ class HexMapApp:
 		self.path_points = []
 		self.last_update = "Не обновлялось"
 		self.hex_size = 0.5  # Начальный размер гекса
-		self.ant_info_window = None
 		self.last_log_update = 0
+		self.server_response = "Ожидание действий..."
+		self.zoom_level = 1.0
+		self.pan_start = None
 
 		# Основные фреймы
 		self.top_frame = ttk.Frame(root)
@@ -135,17 +142,10 @@ class HexMapApp:
 		info_frame = ttk.LabelFrame(self.left_frame, text="Детали муравья", padding=10)
 		info_frame.pack(fill=tk.X, pady=5)
 
-		self.info_text = tk.Text(info_frame, height=10, width=30, font=("Arial", 10))
+		self.info_text = tk.Text(info_frame, height=8, width=30, font=("Arial", 10))
 		self.info_text.pack(fill=tk.X)
 		self.info_text.insert(tk.END, "Кликните на муравья для просмотра информации")
 		self.info_text.config(state=tk.DISABLED)
-
-		# Журнал событий
-		log_frame = ttk.LabelFrame(self.left_frame, text="Журнал событий", padding=10)
-		log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
-		self.log_text = scrolledtext.ScrolledText(log_frame, height=15, font=("Arial", 9))
-		self.log_text.pack(fill=tk.BOTH, expand=True)
 
 		# Управление муравьями
 		move_frame = ttk.LabelFrame(self.left_frame, text="Управление движением", padding=10)
@@ -165,6 +165,22 @@ class HexMapApp:
 		ttk.Button(btn_frame, text="Очистить путь", command=self.clear_path).pack(side=tk.LEFT, padx=2)
 		ttk.Button(btn_frame, text="Отправить путь", command=self.send_path, style="Accent.TButton").pack(side=tk.RIGHT,
 		                                                                                                  padx=2)
+
+		# Ответ сервера
+		response_frame = ttk.LabelFrame(self.left_frame, text="Ответ сервера", padding=10)
+		response_frame.pack(fill=tk.X, pady=5)
+
+		self.response_text = tk.Text(response_frame, height=4, width=30, font=("Arial", 9))
+		self.response_text.pack(fill=tk.X)
+		self.response_text.insert(tk.END, self.server_response)
+		self.response_text.config(state=tk.DISABLED)
+
+		# Журнал событий
+		log_frame = ttk.LabelFrame(self.left_frame, text="Журнал событий", padding=10)
+		log_frame.pack(fill=tk.BOTH, pady=5)
+
+		self.log_text = scrolledtext.ScrolledText(log_frame, height=8, font=("Arial", 9))
+		self.log_text.pack(fill=tk.BOTH, expand=True)
 
 	def init_status_bar(self):
 		"""Инициализация статус-бара"""
@@ -193,7 +209,41 @@ class HexMapApp:
 
 		# Подключение обработчиков событий
 		self.canvas.mpl_connect('button_press_event', self.on_map_click)
-		self.canvas.mpl_connect('motion_notify_event', self.on_map_hover)
+		self.canvas.mpl_connect('scroll_event', self.on_scroll)
+		self.canvas.mpl_connect('button_press_event', self.on_pan_start)
+		self.canvas.mpl_connect('motion_notify_event', self.on_pan_move)
+		self.canvas.mpl_connect('button_release_event', self.on_pan_end)
+
+	def on_scroll(self, event):
+		"""Обработчик масштабирования колесом мыши"""
+		if event.inaxes:
+			# Определяем направление скролла
+			zoom_factor = 1.1 if event.button == 'up' else 0.9
+
+			# Ограничиваем уровень масштаба
+			self.zoom_level = max(0.5, min(3.0, self.zoom_level * zoom_factor))
+
+			# Перерисовываем карту
+			self.root.after(0, self.update_ui)
+
+	def on_pan_start(self, event):
+		"""Начало перемещения карты"""
+		if event.inaxes and event.button == 2:  # Колесо мыши
+			self.pan_start = (event.xdata, event.ydata)
+
+	def on_pan_move(self, event):
+		"""Перемещение карты"""
+		if self.pan_start and event.inaxes and event.button == 2:
+			dx = event.xdata - self.pan_start[0]
+			dy = event.ydata - self.pan_start[1]
+			self.ax.set_xlim(self.ax.get_xlim() - dx)
+			self.ax.set_ylim(self.ax.get_ylim() - dy)
+			self.canvas.draw_idle()
+			self.pan_start = (event.xdata, event.ydata)
+
+	def on_pan_end(self, event):
+		"""Завершение перемещения карты"""
+		self.pan_start = None
 
 	def update_game_data(self):
 		"""Поток для обновления данных игры"""
@@ -238,7 +288,8 @@ class HexMapApp:
 
 		# Динамический размер гекса на основе количества клеток
 		hex_count = len(self.game_data['map'])
-		self.hex_size = max(0.4, min(1.0, 15 / np.sqrt(hex_count)))
+		base_hex_size = max(0.4, min(1.0, 15 / np.sqrt(hex_count)))
+		self.hex_size = base_hex_size * self.zoom_level
 
 		# Отрисовка гексов
 		for cell in self.game_data['map']:
@@ -278,46 +329,66 @@ class HexMapApp:
 		# Отрисовка своих муравьев
 		ant_positions = {}
 		for ant in self.game_data['ants']:
-			x, y = self.hex_to_cart(ant['q'], ant['r'])
-
-			# Смещение для нескольких муравьев на одной клетке
 			key = f"{ant['q']},{ant['r']}"
-			offset = ant_positions.get(key, 0)
-			ant_positions[key] = offset + 1
-			x += offset * self.hex_size * 0.3
-			y += offset * self.hex_size * 0.3
+			if key not in ant_positions:
+				ant_positions[key] = []
+			ant_positions[key].append(ant)
 
-			# Цвет по типу муравья
-			color = ANT_COLORS.get(ant['type'], 'green')
-			ant_patch = Circle(
-				(x, y), radius=self.hex_size / 2,
-				facecolor=color, edgecolor='black'
-			)
-			self.ax.add_patch(ant_patch)
+		# Распределение муравьев на одной клетке по кругу
+		for cell_key, ants in ant_positions.items():
+			q, r = map(int, cell_key.split(','))
+			center_x, center_y = self.hex_to_cart(q, r)
+			radius = self.hex_size * 0.6
 
-			# ID (короткий)
-			ant_id_short = ant['id'].split('-')[0]
-			self.ax.text(x, y, ant_id_short,
-			             ha='center', va='center', fontsize=7, color='white')
+			for i, ant in enumerate(ants):
+				angle = 2 * np.pi * i / len(ants)
+				x = center_x + radius * np.cos(angle)
+				y = center_y + radius * np.sin(angle)
+
+				# Цвет по типу муравья
+				color = ANT_COLORS.get(ant['type'], 'green')
+				ant_patch = Circle(
+					(x, y), radius=self.hex_size / 2,
+					facecolor=color, edgecolor='black'
+				)
+				self.ax.add_patch(ant_patch)
+
+				# ID (короткий)
+				ant_id_short = ant['id'].split('-')[0]
+				self.ax.text(x, y, ant_id_short,
+				             ha='center', va='center', fontsize=7, color='white')
 
 		# Отрисовка вражеских муравьев
+		enemy_positions = {}
 		for enemy in self.game_data['enemies']:
-			x, y = self.hex_to_cart(enemy['q'], enemy['r'])
-
-			# Смещение для нескольких муравьев на одной клетке
 			key = f"{enemy['q']},{enemy['r']}"
-			offset = ant_positions.get(key, 0)
-			ant_positions[key] = offset + 1
-			x += offset * self.hex_size * 0.3
-			y += offset * self.hex_size * 0.3
+			if key not in enemy_positions:
+				enemy_positions[key] = []
+			enemy_positions[key].append(enemy)
 
-			enemy_patch = Circle(
-				(x, y), radius=self.hex_size / 2,
-				facecolor='red', edgecolor='black'
-			)
-			self.ax.add_patch(enemy_patch)
-			self.ax.text(x, y, "E",
-			             ha='center', va='center', fontsize=7, color='white')
+		# Распределение вражеских муравьев на одной клетке по кругу
+		for cell_key, enemies in enemy_positions.items():
+			q, r = map(int, cell_key.split(','))
+			center_x, center_y = self.hex_to_cart(q, r)
+			radius = self.hex_size * 0.6
+
+			for i, enemy in enumerate(enemies):
+				angle = 2 * np.pi * i / len(enemies)
+				x = center_x + radius * np.cos(angle)
+				y = center_y + radius * np.sin(angle)
+
+				# Цвет по типу муравья
+				color = ENEMY_COLORS.get(enemy.get('type', 0), 'red')
+				enemy_patch = Circle(
+					(x, y), radius=self.hex_size / 2,
+					facecolor=color, edgecolor='black'
+				)
+				self.ax.add_patch(enemy_patch)
+
+				# Тип (краткое обозначение)
+				enemy_type = "W" if enemy.get('type', 0) == 0 else "S" if enemy.get('type', 0) == 1 else "E"
+				self.ax.text(x, y, enemy_type,
+				             ha='center', va='center', fontsize=8, color='white', fontweight='bold')
 
 		# Отрисовка пути
 		self.draw_path()
@@ -325,8 +396,8 @@ class HexMapApp:
 		# Добавление легенды на карту
 		self.add_legend_to_map()
 
-		# Установка границ карты
-		if self.game_data['map']:
+		# Установка границ карты (если не в режиме панорамирования)
+		if self.game_data['map'] and not self.pan_start:
 			coords = [self.hex_to_cart(h['q'], h['r']) for h in self.game_data['map']]
 			x, y = zip(*coords)
 			margin = self.hex_size * 3
@@ -338,23 +409,34 @@ class HexMapApp:
 
 	def add_legend_to_map(self):
 		"""Добавление легенды на карту"""
-		legend_text = (
-			"Легенда:\n"
-			"Гексы: Пустой, Грязь, Камень, Кислота, Муравейник\n"
-			"Муравьи: Рабочий (зел), Солдат (син), Разведчик (фиол), Враг (крас)\n"
-			"Ресурсы: Нектар (зол), Падь (крас), Семена (корич)"
-		)
+		# Создаем кастомную легенду
+		legend_elements = [
+			Patch(facecolor=HEX_COLORS[0], edgecolor='black', label='Пустой'),
+			Patch(facecolor=HEX_COLORS[1], edgecolor='black', label='Грязь'),
+			Patch(facecolor=HEX_COLORS[2], edgecolor='black', label='Камень'),
+			Patch(facecolor=HEX_COLORS[3], edgecolor='black', label='Кислота'),
+			Patch(facecolor=HEX_COLORS[4], edgecolor='black', label='Муравейник'),
+			Patch(facecolor=ANT_COLORS[0], edgecolor='black', label='Рабочий (свой)'),
+			Patch(facecolor=ANT_COLORS[1], edgecolor='black', label='Солдат (свой)'),
+			Patch(facecolor=ANT_COLORS[2], edgecolor='black', label='Разведчик (свой)'),
+			Patch(facecolor=ENEMY_COLORS[0], edgecolor='black', label='Рабочий (враг)'),
+			Patch(facecolor=ENEMY_COLORS[1], edgecolor='black', label='Солдат (враг)'),
+			Patch(facecolor=ENEMY_COLORS[2], edgecolor='black', label='Разведчик (враг)'),
+			Patch(facecolor=FOOD_COLORS[0], edgecolor='black', label='Нектар'),
+			Patch(facecolor=FOOD_COLORS[1], edgecolor='black', label='Падь'),
+			Patch(facecolor=FOOD_COLORS[2], edgecolor='black', label='Семена')
+		]
 
-		# Создаем аннотацию с легендой
-		anchored_text = AnchoredText(
-			legend_text,
-			loc='upper left',
-			frameon=True,
-			prop=dict(size=9, family='monospace')
+		# Размещаем легенду в правом верхнем углу
+		legend = self.ax.legend(
+			handles=legend_elements,
+			loc='upper right',
+			bbox_to_anchor=(0.98, 0.98),
+			fontsize=8,
+			title="Легенда",
+			title_fontsize=9
 		)
-		anchored_text.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-		anchored_text.patch.set_alpha(0.8)
-		self.ax.add_artist(anchored_text)
+		legend.get_frame().set_alpha(0.8)
 
 		# Добавляем информацию о ходе внизу
 		turn_info = f"Ход: {self.game_data['turnNo']} | След. ход через: {self.game_data['nextTurnIn']:.1f} сек"
@@ -433,38 +515,6 @@ class HexMapApp:
 
 			# Перерисовка карты для отображения пути
 			self.root.after(0, self.update_ui)
-
-	def on_map_hover(self, event):
-		"""Обработчик наведения курсора на карту"""
-		if event.xdata is None or event.ydata is None:
-			return
-
-		# Определяем гекс под курсором
-		q, r = self.cart_to_hex(event.xdata, event.ydata)
-
-		# Проверяем, есть ли муравей на этом гексе
-		hover_ant = None
-		for ant in self.game_data['ants']:
-			if ant['q'] == q and ant['r'] == r:
-				hover_ant = ant
-				break
-
-		if hover_ant:
-			# Показываем подсказку с краткой информацией
-			ant_type = ANT_TYPES.get(hover_ant['type'], "Неизвестный")
-			health = hover_ant['health']
-			ant_id_short = hover_ant['id'].split('-')[0]
-
-			# Отображаем подсказку рядом с курсором
-			self.ax.annotate(
-				f"{ant_type} {ant_id_short}\nHP: {health}",
-				xy=(event.xdata, event.ydata),
-				xytext=(10, 10),
-				textcoords='offset points',
-				bbox=dict(boxstyle="round,pad=0.5", facecolor='white', alpha=0.9),
-				arrowprops=dict(arrowstyle="->")
-			)
-			self.canvas.draw_idle()
 
 	def show_ant_info(self, ant):
 		"""Отображение информации о муравье"""
@@ -549,14 +599,24 @@ class HexMapApp:
 			)
 
 			if response.status_code == 200:
-				messagebox.showinfo("Успех", "Путь движения отправлен")
+				self.server_response = "Путь успешно отправлен!"
 				self.path_points = []
 				self.path_label.config(text="Путь отправлен")
 			else:
-				messagebox.showerror("Ошибка", f"Статус: {response.status_code}\n{response.text}")
+				self.server_response = f"Ошибка: {response.status_code}\n{response.text}"
+
+			# Обновляем поле ответа
+			self.response_text.config(state=tk.NORMAL)
+			self.response_text.delete(1.0, tk.END)
+			self.response_text.insert(tk.END, self.server_response)
+			self.response_text.config(state=tk.DISABLED)
 
 		except Exception as e:
-			messagebox.showerror("Ошибка", str(e))
+			self.server_response = f"Ошибка: {str(e)}"
+			self.response_text.config(state=tk.NORMAL)
+			self.response_text.delete(1.0, tk.END)
+			self.response_text.insert(tk.END, self.server_response)
+			self.response_text.config(state=tk.DISABLED)
 
 	def register(self):
 		"""Регистрация команды"""
@@ -564,13 +624,25 @@ class HexMapApp:
 			response = requests.post(f"{BASE_URL}/register", headers=HEADERS)
 			if response.status_code == 200:
 				data = response.json()
-				message = f"Регистрация успешна!\nИмя: {data['name']}\n"
-				message += f"След. ход через: {data['nextTurn']} сек"
-				messagebox.showinfo("Успех", message)
+				self.server_response = f"Регистрация успешна!\nИмя: {data['name']}"
+
+				# Обновляем поле ответа
+				self.response_text.config(state=tk.NORMAL)
+				self.response_text.delete(1.0, tk.END)
+				self.response_text.insert(tk.END, self.server_response)
+				self.response_text.config(state=tk.DISABLED)
 			else:
-				messagebox.showerror("Ошибка", f"Статус: {response.status_code}\n{response.text}")
+				self.server_response = f"Ошибка регистрации: {response.status_code}\n{response.text}"
+				self.response_text.config(state=tk.NORMAL)
+				self.response_text.delete(1.0, tk.END)
+				self.response_text.insert(tk.END, self.server_response)
+				self.response_text.config(state=tk.DISABLED)
 		except Exception as e:
-			messagebox.showerror("Ошибка", str(e))
+			self.server_response = f"Ошибка: {str(e)}"
+			self.response_text.config(state=tk.NORMAL)
+			self.response_text.delete(1.0, tk.END)
+			self.response_text.insert(tk.END, self.server_response)
+			self.response_text.config(state=tk.DISABLED)
 
 	def get_logs(self):
 		"""Получение журнала событий"""
