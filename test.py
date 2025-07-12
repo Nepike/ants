@@ -270,11 +270,13 @@ class AntGameApp:
             response = requests.get(f"{BASE_URL}/logs", headers=HEADERS)
             if response.status_code == 200:
                 self.logs = response.json()
+                self.log_text.config(state=tk.NORMAL)
                 self.log_text.delete(1.0, tk.END)
                 for log in self.logs:
-                    self.log_text.insert(tk.END, f"{log['time']}: {log['message']}\n")
+                    self.log_text.insert(tk.END, f"{log['message']}\n")
                 # Прокрутка вниз
                 self.log_text.see(tk.END)
+                self.response_text.config(state=tk.DISABLED)
         except Exception as e:
             self.log_text.insert(f"Ошибка журнала: {str(e)}")
 
@@ -486,6 +488,7 @@ class AntGameApp:
         # Очищаем предыдущие гексы
         self.hex_patches = []
 
+
         if not self.first_update:
             self.current_xlim = self.ax.get_xlim()
             self.current_ylim = self.ax.get_ylim()
@@ -547,6 +550,8 @@ class AntGameApp:
         self.draw_entities(self.game_data['enemies'], hex_size, "enemy")
         self.draw_entities(self.game_data['food'], hex_size, "food")
 
+
+
         # Устанавливаем границы отображения
         if hex_count > 0:
             margin = hex_size * 2
@@ -561,16 +566,26 @@ class AntGameApp:
                 min_y - margin, max_y + margin
             )
 
-            # Для первого запуска устанавливаем границы
-            if self.first_update:
+            # Восстанавливаем настройки вида
+            if not self.first_update and self.current_xlim and self.current_ylim:
+                self.ax.set_xlim(self.current_xlim)
+                self.ax.set_ylim(self.current_ylim)
+            else:
+                # Для первого запуска устанавливаем границы
                 self.ax.set_xlim(min_x, max_x)
                 self.ax.set_ylim(min_y, max_y)
                 self.first_update = False
-            else:
-                # Восстанавливаем сохраненные границы
-                if self.current_xlim and self.current_ylim:
-                    self.ax.set_xlim(self.current_xlim)
-                    self.ax.set_ylim(self.current_ylim)
+
+            # # Для первого запуска устанавливаем границы
+            # if self.first_update:
+            #     self.ax.set_xlim(min_x, max_x)
+            #     self.ax.set_ylim(min_y, max_y)
+            #     self.first_update = False
+            # else:
+            #     # Восстанавливаем сохраненные границы
+            #     if self.current_xlim and self.current_ylim:
+            #         self.ax.set_xlim(self.current_xlim)
+            #         self.ax.set_ylim(self.current_ylim)
 
         # Добавляем легенду
         legend_elements = []
@@ -763,13 +778,14 @@ class AntGameApp:
     def update_game(self):
         while True:
             self.get_arena()
-            # self.get_logs()  # also updates
+            self.get_logs()  # also updates
             self.update_colony_stats()
             self.turn_var.set(f"Текущий ход: {self.game_data['turnNo']} | Следующий ход через: {self.game_data['nextTurnIn']:.1f} сек")
             self.score_var.set(f"{self.game_data['score']}")
             self.update_map()
 
             sleep_time = min(1.0, self.game_data.get('nextTurnIn', 1.0))
+            sleep_time = 2
             time.sleep(sleep_time)
 
 
