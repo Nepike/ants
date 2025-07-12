@@ -59,7 +59,14 @@ body {
 
 
 
-
+#map-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 30px;
+	padding: 10px;
+}
 
 
 #map-block {

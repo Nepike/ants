@@ -13,9 +13,10 @@ async function getLogs() {
         const data = await response.json();
         responseContainer.text(`Status: ${response.status}`);
 
+
         const $logsContainer = $('#logs-block .block-content');
         const messages = data.map(log => log.message).join('\n');
-        $logsContainer.text(messages);
+  		$logsContainer.html(messages.replace(/\n/g,'<br>'));
 
         return data;
     }
@@ -120,8 +121,19 @@ class HexCell extends HexObject {
 
 class Ant extends HexObject {
     draw(ctx) {
+        // Найдём всех муравьев в этой же клетке
+        const sameCellAnts = objects.filter(o =>
+            o instanceof Ant && o.q === this.q && o.r === this.r
+        );
+        const index = sameCellAnts.indexOf(this);
+        const angle = (index / sameCellAnts.length) * Math.PI * 2;
+        const radius = HEX_RADIUS * 0.2;
+
+        const offsetX = radius * Math.cos(angle);
+        const offsetY = radius * Math.sin(angle);
+
         ctx.beginPath();
-        ctx.arc(this.x, this.y, HEX_RADIUS * 0.3, 0, Math.PI * 2);
+        ctx.arc(this.x + offsetX, this.y + offsetY, HEX_RADIUS * 0.25, 0, Math.PI * 2);
         ctx.fillStyle = selected === this ? "red" : (ANT_TYPES[this.type]?.color || "#000");
         ctx.fill();
         ctx.stroke();
@@ -154,6 +166,7 @@ class Food extends HexObject {
 
 // ========= Построение и рендер =========
 let objects = [];
+let hovered = null;
 
 function buildMap(data) {
     objects = [];
@@ -165,9 +178,9 @@ function buildMap(data) {
     const centerR = (Math.min(...rs) + Math.max(...rs)) / 2;
 
     data.map.forEach(c => objects.push(new HexCell(c.q, c.r, c.type, centerQ, centerR)));
-    data.ants.forEach(a => objects.push(new Ant(a.q, a.r, a.type, centerQ, centerR)));
-    data.enemies.forEach(e => objects.push(new Enemy(e.q, e.r, e.type, centerQ, centerR)));
     data.food.forEach(f => objects.push(new Food(f.q, f.r, f.type, centerQ, centerR)));
+    data.enemies.forEach(e => objects.push(new Enemy(e.q, e.r, e.type, centerQ, centerR)));
+    data.ants.forEach(a => objects.push(new Ant(a.q, a.r, a.type, centerQ, centerR)));
 }
 
 function drawMap(data) {
@@ -182,7 +195,18 @@ function drawMap(data) {
     ctx.scale(scale, scale);
 
     buildMap(data);
-    for (const obj of objects) obj.draw(ctx);
+    for (const obj of objects) {
+        // приоритет: hovered красным, затем selected
+        if (obj === hovered || obj === selected) {
+            ctx.save();
+            ctx.strokeStyle = 'red';
+            ctx.fillStyle   = 'red';
+        }
+        obj.draw(ctx);
+        if (obj === hovered || obj === selected) {
+            ctx.restore();
+        }
+    }
 
     ctx.restore();
 }
@@ -198,6 +222,35 @@ function handleClick(e) {
     drawMap(gameData);
 }
 
+function handleHover(e) {
+    const canvas = $("#hex-map")[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left - canvas.width / 2 - offsetX) / scale;
+    const y = (e.clientY - rect.top  - canvas.height / 2 - offsetY) / scale;
+
+    // Найти первый объект, содержащий точку
+    const found = objects.find(o => o.containsPoint(x, y)) || null;
+    if (found !== hovered) {
+        hovered = found;
+        if (hovered) {
+            // Выводим свойства в консоль
+            if (hovered instanceof Ant) {
+                console.log(`Ant ${hovered.id}: HP=${hovered.health}`, hovered.food ? `Carrying ${hovered.food.amount} of type ${hovered.food.type}` : '');
+            }
+            else if (hovered instanceof Enemy) {
+                console.log(`Enemy type=${hovered.type}: HP=${hovered.health}`);
+            }
+            else if (hovered instanceof Food) {
+                console.log(`Food type=${hovered.type}: amount=${hovered.amount}`);
+            }
+            else if (hovered instanceof HexCell) {
+                console.log(`Hex q=${hovered.q}, r=${hovered.r}: type=${hovered.type}, cost=${hovered.cost}`);
+            }
+        }
+        drawMap(gameData);
+    }
+}
+
 // ========= Получение данных и запуск =========
 let gameData = null;
 
@@ -207,6 +260,19 @@ async function getArena() {
     });
     const data = await res.json();
     gameData = data;
+	$('#own-workers-count').text(data.ants.filter(a=>a.type===0).length);
+	$('#own-soldiers-count').text(data.ants.filter(a=>a.type===1).length);
+	$('#own-scounts-count').text(data.ants.filter(a=>a.type===2).length);
+	$('#map-apples-count').text(data.food.filter(f=>f.type===1).map(f=>f.amount).reduce((a,b)=>a+b,0));
+	$('#map-bread-count').text(data.food.filter(f=>f.type===2).map(f=>f.amount).reduce((a,b)=>a+b,0));
+	$('#map-nectar-count').text(data.food.filter(f=>f.type===3).map(f=>f.amount).reduce((a,b)=>a+b,0));
+	$('#enemy-workers-count').text(data.enemies.filter(e=>e.type===0).length);
+	$('#enemy-soldiers-count').text(data.enemies.filter(e=>e.type===1).length);
+	$('#enemy-scounts-count').text(data.enemies.filter(e=>e.type===2).length);
+	$('#current-turn').text(data.turnNo);
+	$('#next-turn').text(data.nextTurnIn);
+	$('#score').text(data.score);
+
     drawMap(data);
 }
 
@@ -230,10 +296,13 @@ function setupCanvasEvents() {
     });
 
     $(window).on("mousemove", e => {
-        if (!isDragging) return;
-        offsetX = e.clientX - dragStart.x;
-        offsetY = e.clientY - dragStart.y;
-        drawMap(gameData);
+        if (isDragging) {
+            offsetX = e.clientX - dragStart.x;
+            offsetY = e.clientY - dragStart.y;
+            drawMap(gameData);
+        } else {
+            handleHover(e);
+        }
     }).on("mouseup", e => {
         if (e.button === 2) isDragging = false;
     });

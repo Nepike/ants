@@ -61,10 +61,16 @@
                 </div>
             </div>
 
-            <div class="col-6">
-                <div class="row">
-                    <div id="center">
-                        <div id="map-header">Информация о ходе и тд тп...</div>
+                <div class="col-6">
+                    <div class="row">
+                        <div id="center">
+                            <div id="map-header">
+                                <h4>Текущий ход: <span class="font-weight-bold" id="current-turn">0</span></h4>
+                                <h4>Следующий через: <span class="font-weight-bold" id="next-turn">0.0</span></h4>
+                                <h4>Счет: <span class="font-weight-bold" id="score">0</span></h4>
+                                <button type="button" class="btn btn-primary" onclick="postRegister()">Зарегистрироваться</button>
+                            </div>
+                        </div>
                         <div id="map-block" class="block">
                             <div class="block-name">Карта</div>
                             <div id="map-container" class="block-content">
@@ -73,7 +79,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
 
             <div class="col-3">
                 <div class="row">
