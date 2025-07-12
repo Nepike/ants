@@ -11,7 +11,7 @@ async function getLogs() {
         });
 
         const data = await response.json();
-        responseContainer.text(`Status: ${response.status}`);
+        // responseContainer.text(`Status: ${response.status}`);
 
 
         const $logsContainer = $('#logs-block .block-content');
@@ -79,11 +79,10 @@ const FOOD_TYPES = {
 
 // ========= Объекты карты =========
 class HexObject {
-    constructor(q, r, type, centerQ, centerR) {
-        this.q = q;
-        this.r = r;
-        this.type = type;
-        const pos = this.hexToPixel(q - centerQ, r - centerR);
+    constructor(data, centerQ, centerR) {
+        // Сохраняем все данные объекта
+        Object.assign(this, data);
+        const pos = this.hexToPixel(data.q - centerQ, data.r - centerR);
         this.x = pos.x;
         this.y = pos.y;
     }
@@ -143,7 +142,7 @@ class Ant extends HexObject {
 class Enemy extends HexObject {
     draw(ctx) {
         const s = HEX_RADIUS * 0.6;
-        ctx.fillStyle = selected === this ? "red" : "#000";
+        ctx.fillStyle = selected === this ? "red" : (ANT_TYPES[this.type]?.color || "#000");
         ctx.fillRect(this.x - s/2, this.y - s/2, s, s);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(this.x - s/2, this.y - s/2, s, s);
@@ -164,6 +163,7 @@ class Food extends HexObject {
     }
 }
 
+
 // ========= Построение и рендер =========
 let objects = [];
 let hovered = null;
@@ -177,10 +177,10 @@ function buildMap(data) {
     const centerQ = (Math.min(...qs) + Math.max(...qs)) / 2;
     const centerR = (Math.min(...rs) + Math.max(...rs)) / 2;
 
-    data.map.forEach(c => objects.push(new HexCell(c.q, c.r, c.type, centerQ, centerR)));
-    data.food.forEach(f => objects.push(new Food(f.q, f.r, f.type, centerQ, centerR)));
-    data.enemies.forEach(e => objects.push(new Enemy(e.q, e.r, e.type, centerQ, centerR)));
-    data.ants.forEach(a => objects.push(new Ant(a.q, a.r, a.type, centerQ, centerR)));
+    data.map.forEach(c => objects.push(new HexCell(c, centerQ, centerR)));
+    data.food.forEach(f => objects.push(new Food(f, centerQ, centerR)));
+    data.enemies.forEach(e => objects.push(new Enemy(e, centerQ, centerR)));
+    data.ants.forEach(a => objects.push(new Ant(a, centerQ, centerR)));
 }
 
 function drawMap(data) {
@@ -218,7 +218,8 @@ function handleClick(e) {
     const x = (e.clientX - rect.left - canvas.width / 2 - offsetX) / scale;
     const y = (e.clientY - rect.top - canvas.height / 2 - offsetY) / scale;
 
-    selected = objects.find(o => o.containsPoint(x, y)) || null;
+    // Ищем объекты в обратном порядке (сначала верхние слои)
+    selected = objects.slice().reverse().find(o => o.containsPoint(x, y)) || null;
     drawMap(gameData);
 }
 
@@ -226,31 +227,60 @@ function handleHover(e) {
     const canvas = $("#hex-map")[0];
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left - canvas.width / 2 - offsetX) / scale;
-    const y = (e.clientY - rect.top  - canvas.height / 2 - offsetY) / scale;
+    const y = (e.clientY - rect.top - canvas.height / 2 - offsetY) / scale;
 
-    // Найти первый объект, содержащий точку
-    const found = objects.find(o => o.containsPoint(x, y)) || null;
+    // Ищем объекты в обратном порядке (сначала верхние слои)
+    const found = objects.slice().reverse().find(o => o.containsPoint(x, y)) || null;
+    
     if (found !== hovered) {
         hovered = found;
+        drawMap(gameData);
+        
+        const infoBlock = $("#info-block .block-content");
+        
         if (hovered) {
-            // Выводим свойства в консоль
+            let html = "";
             if (hovered instanceof Ant) {
-                console.log(`Ant ${hovered.id}: HP=${hovered.health}`, hovered.food ? `Carrying ${hovered.food.amount} of type ${hovered.food.type}` : '');
+                html = `
+                    <div class="info-header">Муравей</div>
+                    <div><b>Тип:</b> ${ANT_TYPES[hovered.type]?.name || hovered.type}</div>
+                    <div><b>ID:</b> ${hovered.id}</div>
+                    <div><b>Здоровье:</b> ${hovered.health}</div>
+                    <div><b>Позиция:</b> q=${hovered.q}, r=${hovered.r}</div>
+                    <div><b>Несёт:</b> ${hovered.food ? `${hovered.food.amount} ${FOOD_TYPES[hovered.food.type]?.name || hovered.food.type}` : 'ничего'}</div>
+                `;
             }
             else if (hovered instanceof Enemy) {
-                console.log(`Enemy type=${hovered.type}: HP=${hovered.health}`);
+                html = `
+                    <div class="info-header">Враг</div>
+                    <div><b>Тип:</b> ${ANT_TYPES[hovered.type]?.name || hovered.type}</div>
+                    <div><b>Здоровье:</b> ${hovered.health}</div>
+                    <div><b>Позиция:</b> q=${hovered.q}, r=${hovered.r}</div>
+                    <div><b>Несёт:</b> ${hovered.food ? `${hovered.food.amount} ${FOOD_TYPES[hovered.food.type]?.name || hovered.food.type}` : 'ничего'}</div>
+                `;
             }
             else if (hovered instanceof Food) {
-                console.log(`Food type=${hovered.type}: amount=${hovered.amount}`);
+                html = `
+                    <div class="info-header">Еда</div>
+                    <div><b>Тип:</b> ${FOOD_TYPES[hovered.type]?.name || hovered.type}</div>
+                    <div><b>Количество:</b> ${hovered.amount}</div>
+                    <div><b>Позиция:</b> q=${hovered.q}, r=${hovered.r}</div>
+                `;
             }
             else if (hovered instanceof HexCell) {
-                console.log(`Hex q=${hovered.q}, r=${hovered.r}: type=${hovered.type}, cost=${hovered.cost}`);
+                html = `
+                    <div class="info-header">Клетка</div>
+                    <div><b>Тип:</b> ${HEX_TYPES[hovered.type]?.name || hovered.type}</div>
+                    <div><b>Стоимость перемещения:</b> ${hovered.cost}</div>
+                    <div><b>Позиция:</b> q=${hovered.q}, r=${hovered.r}</div>
+                `;
             }
+            infoBlock.html(html);
+        } else {
+            infoBlock.html("<div class='info-placeholder'>Наведите на объект для информации</div>");
         }
-        drawMap(gameData);
     }
 }
-
 // ========= Получение данных и запуск =========
 let gameData = null;
 

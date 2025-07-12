@@ -81,6 +81,28 @@ body {
 }
 
 
+#info-block .block-content {
+    padding: 10px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.info-header {
+    font-weight: bold;
+    font-size: 16px;
+    margin-bottom: 8px;
+    color: #2c3e50;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 4px;
+}
+
+.info-placeholder {
+    color: #7f8c8d;
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+}
+
 
 /*#legend {
     position: absolute;
