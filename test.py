@@ -515,6 +515,7 @@ class AntGameApp:
         area_factor = max(width_in_hex, height_in_hex)
         hex_size = 8.0 / (1 + area_factor ** 0.7)
         hex_size = max(0.2, min(1.0, hex_size))
+        #hex_size = 1
 
         # Отрисовка гексов
         hex_patches = []

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AntsEngine</title>
+
+    <link rel="icon" type="image/x-icon" href="img/favicon.jpg">
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=1.0">
+
+    <script src="https://kit.fontawesome.com/610c72000d.js" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.js" integrity="sha256-eKhayi8LEQwp4NKxN+CfCh+3qOVUtJn3QNZ0TciWLP4=" crossorigin="anonymous"></script>
+    <script src="js/script.js" defer></script>
+</head>
+<body>
+    <div id="wrapper" class="container" style="max-width: 100% !important;">
+        <div class="row">
+            <div><br><br></div>
+        </div>
+        <div class="row">
+            <div class="col-3">
+                <div class="row">
+                    <div id="left-side">
+                        <div id="stats-block" class="block">
+                            <div class="block-name">Статистика</div>
+                            <div class="block-content">
+                                <ul>
+                                    <li>
+                                        Муравьи
+                                        <ul>
+                                            <li>Рабочие: <span class="font-weight-bold" id="own-workers-count">0</span></li>
+                                            <li>Солдаты: <span class="font-weight-bold" id="own-soldiers-count">0</span></li>
+                                            <li>Разветчики: <span class="font-weight-bold" id="own-scounts-count">0</span></li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        Еда
+                                        <ul>
+                                            <li>Яблоки: <span class="font-weight-bold" id="map-apples-count">0</span></li>
+                                            <li>Хлеб: <span class="font-weight-bold" id="map-bread-count">0</span></li>
+                                            <li>Нектар: <span class="font-weight-bold" id="map-nectar-count">0</span></li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        Враги
+                                        <ul>
+                                            <li>Рабочие: <span class="font-weight-bold" id="enemy-workers-count">0</span></li>
+                                            <li>Солдаты: <span class="font-weight-bold" id="enemy-soldiers-count">0</span></li>
+                                            <li>Разветчики: <span class="font-weight-bold" id="enemy-scounts-count">0</span></li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div id="logs-block" class="block">
+                            <div class="block-name">Логи</div>
+                            <div class="block-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="row">
+                    <div id="center">
+                        <div id="map-header">Информация о ходе и тд тп...</div>
+                        <div id="map-block" class="block">
+                            <div class="block-name">Карта</div>
+                            <div id="map-container" class="block-content">
+                                <canvas id="hex-map" style="width: 100%; height: 100%; display: block;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-3">
+                <div class="row">
+                    <div id="right-side">
+                        <div id="response-block" class="block">
+                            <div class="block-name">Посдений ответ сервера</div>
+                            <div class="block-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
